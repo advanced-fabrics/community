@@ -1,0 +1,33 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  boundaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Reject raw telemetry and credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -E '\.(log|prom|trace)$'; then exit 1; fi
+          if git grep -IlE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' -- .; then exit 1; fi
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate public planning workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .github/workflows/product-pulse.yml
+          grep -q '0 1 \* \* 1' .github/workflows/product-pulse.yml
+          grep -q 'roadmap/public' .github/workflows/product-pulse.yml
