@@ -1,0 +1,82 @@
+name: product-pulse
+
+on:
+  schedule:
+    - cron: "0 1 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: product-pulse-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  create-reviews:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PRODUCT_NAME: AdvFab
+    steps:
+      - name: Create idempotent weekly and monthly reviews
+        shell: bash
+        run: |
+          set -euo pipefail
+          week="$(date -u +%G-W%V)"
+          month="$(date -u +%Y-%m)"
+          day="$(date -u +%d)"
+          weekly_title="[pulse] ${PRODUCT_NAME} ${week}"
+          weekly_body=$(cat <<EOF
+          ## Outcome review
+
+          - What user or community outcome moved this week?
+          - Which public evidence supports the update?
+
+          ## Product and release health
+
+          - Roadmap changes:
+          - Releases, documentation, and website:
+          - Reliability or maintenance follow-up:
+
+          ## Next commitments
+
+          - [ ] Confirm the current public-roadmap items have an owner and horizon.
+          - [ ] Record blockers and cross-repository dependencies.
+          - [ ] Select the highest-value website or community deliverable.
+
+          Do not paste credentials, private topology, customer data, or raw telemetry.
+          EOF
+          )
+          weekly_number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --search "$weekly_title in:title" --json number --jq '.[0].number // empty')
+          if [[ -z "$weekly_number" ]]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$weekly_title" --body "$weekly_body" --label "type/maintenance,status/triage,roadmap/public,track/governance,cadence/weekly"
+          elif gh issue view "$weekly_number" --repo "$GITHUB_REPOSITORY" --json state --jq .state | grep -qx CLOSED; then
+            gh issue reopen "$weekly_number" --repo "$GITHUB_REPOSITORY"
+          fi
+
+          if (( 10#$day <= 7 )); then
+            monthly_title="[monthly] ${PRODUCT_NAME} ${month}"
+            monthly_body=$(cat <<EOF
+          ## Monthly outcome
+
+          Summarize product, adoption, documentation, website, release, and reliability progress using public evidence.
+
+          ## Measures
+
+          - Quick Start and documentation:
+          - Release adoption:
+          - Community participation:
+          - Website/content delivery:
+
+          ## Roadmap decision
+
+          Record what moves between Now, Next, and Later, why it changed, and what was deprioritized.
+          EOF
+            )
+            monthly_number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --search "$monthly_title in:title" --json number --jq '.[0].number // empty')
+            if [[ -z "$monthly_number" ]]; then
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$monthly_title" --body "$monthly_body" --label "type/maintenance,status/triage,roadmap/public,track/governance,cadence/monthly"
+            fi
+          fi
